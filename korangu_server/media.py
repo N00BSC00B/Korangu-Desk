@@ -135,7 +135,7 @@ async def media_watcher(state: ServerState) -> None:
         last_status_sent = ""
 
     while True:
-        should_stream_lyrics = state.esp32_ws is not None and state.esp32_current_page == 5
+        should_stream_lyrics = state.esp32_ws is not None and state.esp32_current_page == 6
 
         if not should_stream_lyrics:
             if lyrics_mode_active:

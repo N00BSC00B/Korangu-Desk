@@ -59,7 +59,7 @@ def register_routes(app: FastAPI, state: ServerState) -> None:
                 if data.startswith("PAGE_STATE,"):
                     try:
                         page = int(data.split(",", 1)[1])
-                        state.esp32_current_page = max(0, min(8, page))
+                        state.esp32_current_page = max(0, min(9, page))
                         TELEMETRY.set("last_esp_page", state.esp32_current_page)
                     except ValueError:
                         pass
@@ -105,7 +105,7 @@ def register_routes(app: FastAPI, state: ServerState) -> None:
     @app.get("/set_page/{page_id}")
     async def set_page(page_id: int):
         TELEMETRY.inc("api_set_page_requests")
-        page_id = max(0, min(8, page_id))
+        page_id = max(0, min(9, page_id))
 
         async with state.page_change_lock:
             ok, detail = await send_page_with_retry(state, page_id)

@@ -52,13 +52,14 @@ MOODS: List[Tuple[str, int]] = [
 PAGES: List[Tuple[str, int]] = [
     ("🐵 Face", 0),
     ("⏱️ Clock", 1),
-    ("⛅ Weather", 2),
-    ("🌍 World Clock", 3),
-    ("📅 Forecast", 4),
-    ("🎵 Lyrics View", 5),
-    ("💻 Cyberdeck", 6),
-    ("🦖 Mini-Game", 7),
+    ("🗓️ Calendar", 2),
+    ("⛅ Weather", 3),
+    ("🌍 World Clock", 4),
+    ("📅 Forecast", 5),
+    ("🎵 Lyrics View", 6),
+    ("💻 Cyberdeck", 7),
     ("🎬 Media Screen", 8),
+    ("🦖 Mini-Game", 9),
 ]
 
 # Native Desktop Theme (Subtle application of the web colors)

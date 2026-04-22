@@ -111,32 +111,34 @@ int menuSelection = 0;
 const int MENU_ACTION_BRIGHTNESS = -1;
 const int MENU_ACTION_CONFIG_MODE = -2;
 const int MENU_ACTION_RESET_DEFAULTS = -3;
-const int MENU_ITEM_COUNT_ONLINE = 12;
-const int MENU_ITEM_COUNT_OFFLINE = 9;
+const int MENU_ITEM_COUNT_ONLINE = 13;
+const int MENU_ITEM_COUNT_OFFLINE = 10;
 
 const int MENU_ACTIONS_ONLINE[MENU_ITEM_COUNT_ONLINE] = {
-  0, 1, 2, 3, 4, 5, 6, 7, 8,
+  0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
   MENU_ACTION_BRIGHTNESS, MENU_ACTION_CONFIG_MODE, MENU_ACTION_RESET_DEFAULTS};
 const char *const MENU_LABELS_ONLINE[MENU_ITEM_COUNT_ONLINE] = {
   "Face",
   "Clock",
+  "Calendar",
   "Weather",
   "World Clock",
   "Forecast",
   "Lyrics",
   "Health Stats",
-  "Run Game",
   "Media Screen",
+  "Run Game",
   "Brightness",
   "Config Mode",
   "Reset Defaults"};
 
 const int MENU_ACTIONS_OFFLINE[MENU_ITEM_COUNT_OFFLINE] = {
-  0, 1, 2, 3, 4, 7,
+  0, 1, 2, 3, 4, 5, 9,
   MENU_ACTION_BRIGHTNESS, MENU_ACTION_CONFIG_MODE, MENU_ACTION_RESET_DEFAULTS};
 const char *const MENU_LABELS_OFFLINE[MENU_ITEM_COUNT_OFFLINE] = {
   "Face",
   "Clock",
+  "Calendar",
   "Weather",
   "World Clock",
   "Forecast",
@@ -1074,9 +1076,9 @@ void transitionToPage(int requestedPage, bool forceReport = false)
 {
   if (requestedPage < 0)
     requestedPage = 0;
-  if (requestedPage > 8)
-    requestedPage = 8;
-  if (!wsConnected && (requestedPage == 5 || requestedPage == 6 || requestedPage == 8))
+  if (requestedPage > 9)
+    requestedPage = 9;
+  if (!wsConnected && (requestedPage == 6 || requestedPage == 7 || requestedPage == 8 || requestedPage == 9))
     requestedPage = 0;
 
   bool changed = (currentPage != requestedPage);
@@ -1089,7 +1091,7 @@ void transitionToPage(int requestedPage, bool forceReport = false)
   lastPageSwitch = millis();
   lastSaccade = 0;
 
-  if (currentPage == 5)
+  if (currentPage == 6)
   {
     if (currentLyric.length() == 0)
       currentLyric = "[music]";
@@ -1238,6 +1240,8 @@ void handleQuickSwapDoubleTap()
   else if (currentPage == 1)
     nextPage = 2;
   else if (currentPage == 2)
+    nextPage = 3;
+  else if (currentPage == 3)
     nextPage = 0;
 
   statDoubleTapSwapCount++;
@@ -1339,7 +1343,7 @@ void handleTouch()
       {
         if (inMenuOverlay)
           handleMenuTap();
-        else if (currentPage == 7)
+        else if (currentPage == 9)
           handleGameTap(now);
         else
         {
@@ -2018,7 +2022,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       String incomingLyric = text.substring(6);
       incomingLyric.trim();
       currentLyric = incomingLyric.length() > 0 ? incomingLyric : "[music]";
-      if (currentPage == 5)
+      if (currentPage == 6)
       {
         lyricStartTime = millis();
         lyricTransitionType = random(0, 4); // Pick a random animation!
@@ -2029,7 +2033,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       String statusCode = text.substring(13);
       statusCode.trim();
       currentLyric = lyricStatusToText(statusCode);
-      if (currentPage == 5)
+      if (currentPage == 6)
       {
         lyricStartTime = millis();
         lyricTransitionType = random(0, 4);
@@ -2586,6 +2590,105 @@ void drawClock()
   display.setCursor((SCREEN_WIDTH - w) / 2, 62);
   display.print(dateStr);
 }
+
+bool isLeapYearLocal(int year)
+{
+  return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+}
+
+int daysInMonthLocal(int month, int year)
+{
+  static const int monthDays[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  if (month == 2 && isLeapYearLocal(year))
+    return 29;
+  return monthDays[month - 1];
+}
+
+void drawCalendarPage()
+{
+  struct tm today;
+  if (!getLocalTime(&today))
+  {
+    display.setFont(NULL);
+    display.setCursor(30, 30);
+    display.print("Syncing...");
+    return;
+  }
+
+  const char *monthNames[12] = {
+      "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+      "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
+
+  int year = today.tm_year + 1900;
+  int month = today.tm_mon + 1;
+  int activeDay = today.tm_mday;
+
+  struct tm firstDay = today;
+  firstDay.tm_mday = 1;
+  mktime(&firstDay);
+
+  int firstWeekday = firstDay.tm_wday; // 0 = Sunday
+  int totalDays = daysInMonthLocal(month, year);
+
+  display.setFont(NULL);
+  display.setTextSize(1);
+
+  display.fillRect(0, 0, 128, 10, SH110X_WHITE);
+  display.setTextColor(SH110X_BLACK);
+
+  char title[20];
+  snprintf(title, sizeof(title), "%s %d", monthNames[month - 1], year);
+  int titleX = 64 - ((int)strlen(title) * 3);
+  display.setCursor(titleX, 1);
+  display.print(title);
+
+  display.setTextColor(SH110X_WHITE);
+
+  const char *weekdayNames[7] = {"S", "M", "T", "W", "T", "F", "S"};
+  const int colWidth = 18;
+  const int startX = 1;
+  const int weekdayY = 12;
+  for (int col = 0; col < 7; col++)
+  {
+    display.setCursor(startX + (col * colWidth) + 6, weekdayY);
+    display.print(weekdayNames[col]);
+  }
+
+  const int gridStartY = 20;
+  const int rowHeight = 7;
+
+  for (int row = 0; row < 6; row++)
+  {
+    for (int col = 0; col < 7; col++)
+    {
+      int slot = (row * 7) + col;
+      int drawDay = slot - firstWeekday + 1;
+      if (drawDay < 1 || drawDay > totalDays)
+        continue;
+
+      int x = startX + (col * colWidth);
+      int y = gridStartY + (row * rowHeight);
+
+      if (drawDay == activeDay)
+      {
+        display.fillRoundRect(x, y - 1, colWidth - 1, rowHeight, 1, SH110X_WHITE);
+        display.setTextColor(SH110X_BLACK);
+      }
+      else
+      {
+        display.setTextColor(SH110X_WHITE);
+      }
+
+      char dayStr[3];
+      snprintf(dayStr, sizeof(dayStr), "%2d", drawDay);
+      display.setCursor(x + 3, y);
+      display.print(dayStr);
+    }
+  }
+
+  display.setTextColor(SH110X_WHITE);
+}
+
 void drawWeatherCard()
 {
   WeatherViewData weatherView;
@@ -3442,14 +3545,14 @@ void loop()
   establishTelepathicLink();
   handleTouch();
 
-  if (!wsConnected && (currentPage == 5 || currentPage == 6 || currentPage == 8))
+  if (!wsConnected && (currentPage == 6 || currentPage == 7 || currentPage == 8 || currentPage == 9))
   {
     transitionToPage(0, true);
   }
 
   // Returns to face after 5 seconds on utility pages.
-  // Lyrics (5), Cyberdeck (6), Game (7), and Media (8) stay sticky until user changes screen.
-  if (!inMenuOverlay && currentPage != 0 && currentPage != 5 && currentPage != 6 && currentPage != 7 && currentPage != 8 && (now - lastPageSwitch > 5000))
+  // Lyrics (6), Cyberdeck (7), Media (8), and Game (9) stay sticky until user changes screen.
+  if (!inMenuOverlay && currentPage != 0 && currentPage != 6 && currentPage != 7 && currentPage != 8 && currentPage != 9 && (now - lastPageSwitch > 5000))
   {
     transitionToPage(0, true);
   }
@@ -3468,25 +3571,28 @@ void loop()
     drawClock();
     break;
   case 2:
-    drawWeatherCard();
+    drawCalendarPage();
     break;
   case 3:
-    drawWorldClock();
+    drawWeatherCard();
     break;
   case 4:
-    drawForecastPage();
+    drawWorldClock();
     break;
   case 5:
-    drawBeautifulLyrics();
-    break; // NEW LYRICS RENDERER!
+    drawForecastPage();
+    break;
   case 6:
-    drawCyberdeckPage();
+    drawBeautifulLyrics();
     break;
   case 7:
-    drawKoranguRun();
+    drawCyberdeckPage();
     break;
   case 8:
     drawMediaPage();
+    break;
+  case 9:
+    drawKoranguRun();
     break;
   }
 

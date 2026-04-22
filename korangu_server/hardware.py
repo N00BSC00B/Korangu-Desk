@@ -44,7 +44,7 @@ async def hardware_watcher(state: ServerState) -> None:
         cpu = max(0, min(100, cpu))
         ram = max(0, min(100, ram))
 
-        if state.esp32_ws is None or state.esp32_current_page != 6:
+        if state.esp32_ws is None or state.esp32_current_page != 7:
             continue
 
         stats_msg = f"STATS:{cpu},{ram},{up_kbps},{down_kbps}"
