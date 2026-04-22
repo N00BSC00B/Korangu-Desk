@@ -1,11 +1,38 @@
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel, Field
 
 from .config import DISCOVERY_PORT, SERVER_PORT
 from .hardware import send_page_with_retry
+from .media_screen import (
+    DEFAULT_MAX_FRAMES,
+    DEFAULT_OFFSET_X,
+    DEFAULT_OFFSET_Y,
+    DEFAULT_ROTATION_DEG,
+    DEFAULT_STREAM_FPS,
+    DEFAULT_ZOOM,
+    MEDIA_SCREEN,
+    get_media_status,
+    prepare_media_clip,
+)
 from .state import ServerState
 from .telemetry import TELEMETRY
+
+
+class MediaSetRequest(BaseModel):
+    path: str = Field(..., min_length=1)
+    fps: float = Field(default=DEFAULT_STREAM_FPS, ge=1.0, le=12.0)
+    dither: bool = True
+    threshold: int = Field(default=128, ge=1, le=254)
+    loop: bool = True
+    max_frames: int = Field(default=DEFAULT_MAX_FRAMES, ge=1, le=1200)
+    rotation: float = Field(default=DEFAULT_ROTATION_DEG, ge=-180.0, le=180.0)
+    zoom: float = Field(default=DEFAULT_ZOOM, ge=0.25, le=4.0)
+    offset_x: int = Field(default=DEFAULT_OFFSET_X, ge=-256, le=256)
+    offset_y: int = Field(default=DEFAULT_OFFSET_Y, ge=-128, le=128)
 
 
 def register_routes(app: FastAPI, state: ServerState) -> None:
@@ -32,7 +59,7 @@ def register_routes(app: FastAPI, state: ServerState) -> None:
                 if data.startswith("PAGE_STATE,"):
                     try:
                         page = int(data.split(",", 1)[1])
-                        state.esp32_current_page = max(0, min(7, page))
+                        state.esp32_current_page = max(0, min(8, page))
                         TELEMETRY.set("last_esp_page", state.esp32_current_page)
                     except ValueError:
                         pass
@@ -78,7 +105,7 @@ def register_routes(app: FastAPI, state: ServerState) -> None:
     @app.get("/set_page/{page_id}")
     async def set_page(page_id: int):
         TELEMETRY.inc("api_set_page_requests")
-        page_id = max(0, min(7, page_id))
+        page_id = max(0, min(8, page_id))
 
         async with state.page_change_lock:
             ok, detail = await send_page_with_retry(state, page_id)
@@ -94,6 +121,75 @@ def register_routes(app: FastAPI, state: ServerState) -> None:
             "page": page_id,
             "ack": ok,
             "detail": detail,
+        }
+
+    @app.post("/media/set")
+    async def media_set(request: MediaSetRequest):
+        TELEMETRY.inc("api_media_set_requests")
+        TELEMETRY.inc("media_processing_attempts")
+        TELEMETRY.set("last_media_source", request.path)
+        TELEMETRY.set("last_media_error", "")
+
+        MEDIA_SCREEN.mark_processing(request.path)
+
+        try:
+            prepared = await asyncio.to_thread(
+                prepare_media_clip,
+                request.path,
+                request.fps,
+                request.dither,
+                request.threshold,
+                request.loop,
+                request.max_frames,
+                request.rotation,
+                request.zoom,
+                request.offset_x,
+                request.offset_y,
+            )
+        except Exception as exc:
+            detail = str(exc) or "Media processing failed"
+            MEDIA_SCREEN.set_error(detail)
+            TELEMETRY.inc("media_set_failed")
+            TELEMETRY.record_media_status("ERROR")
+            TELEMETRY.set("last_media_error", detail)
+            return {
+                "status": "failed",
+                "detail": detail,
+            }
+
+        MEDIA_SCREEN.set_ready(prepared)
+        TELEMETRY.inc("media_set_success")
+        TELEMETRY.record_media_status("READY")
+        TELEMETRY.set("last_media_source", prepared.source_path)
+
+        return {
+            "status": "ready",
+            "detail": "Media prepared",
+            "source_path": prepared.source_path,
+            "source_type": prepared.source_type,
+            "frames": len(prepared.frames_hex),
+            "fps": round(1.0 / prepared.frame_interval, 2),
+            "loop": prepared.loop,
+        }
+
+    @app.get("/media/status")
+    def media_status():
+        TELEMETRY.inc("api_media_status_requests")
+        status = get_media_status()
+        TELEMETRY.set("last_media_status", str(status.get("status", "")))
+        TELEMETRY.set("last_media_error", str(status.get("error", "")))
+        return status
+
+    @app.post("/media/clear")
+    def media_clear():
+        TELEMETRY.inc("api_media_clear_requests")
+        MEDIA_SCREEN.clear()
+        TELEMETRY.record_media_status("NO_MEDIA")
+        TELEMETRY.set("last_media_status", "NO_MEDIA")
+        TELEMETRY.set("last_media_error", "")
+        TELEMETRY.set("last_media_source", "")
+        return {
+            "status": "cleared",
         }
 
     @app.get("/esp/config_mode")

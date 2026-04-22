@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from .discovery import broadcast_presence
 from .hardware import hardware_watcher
 from .media import media_watcher
+from .media_screen import media_screen_watcher
 from .routes import register_routes
 from .state import STATE
 
@@ -18,14 +19,16 @@ from .state import STATE
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     threading.Thread(target=broadcast_presence, daemon=True).start()
     media_task = asyncio.create_task(media_watcher(STATE))
+    media_screen_task = asyncio.create_task(media_screen_watcher(STATE))
     hardware_task = asyncio.create_task(hardware_watcher(STATE))
 
     try:
         yield
     finally:
         media_task.cancel()
+        media_screen_task.cancel()
         hardware_task.cancel()
-        await asyncio.gather(media_task, hardware_task, return_exceptions=True)
+        await asyncio.gather(media_task, media_screen_task, hardware_task, return_exceptions=True)
 
 
 app = FastAPI(lifespan=lifespan)

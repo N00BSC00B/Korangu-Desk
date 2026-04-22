@@ -114,6 +114,9 @@ python server.py
 | GET    | `/feed`               | Add energy to the device                     |
 | GET    | `/set_page/{page_id}` | Switch active display page with ACK tracking |
 | GET    | `/esp/config_mode`    | Ask ESP32 to enter setup mode                |
+| POST   | `/media/set`          | Prepare image/video frames for Media Screen  |
+| GET    | `/media/status`       | Get current media processing/stream status   |
+| POST   | `/media/clear`        | Clear prepared media clip                    |
 | GET    | `/debug/telemetry`    | Inspect server telemetry counters/state      |
 | WS     | `/ws`                 | ESP32 real-time command & data channel       |
 

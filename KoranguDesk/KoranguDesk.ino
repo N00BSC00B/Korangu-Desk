@@ -111,11 +111,11 @@ int menuSelection = 0;
 const int MENU_ACTION_BRIGHTNESS = -1;
 const int MENU_ACTION_CONFIG_MODE = -2;
 const int MENU_ACTION_RESET_DEFAULTS = -3;
-const int MENU_ITEM_COUNT_ONLINE = 11;
+const int MENU_ITEM_COUNT_ONLINE = 12;
 const int MENU_ITEM_COUNT_OFFLINE = 9;
 
 const int MENU_ACTIONS_ONLINE[MENU_ITEM_COUNT_ONLINE] = {
-  0, 1, 2, 3, 4, 5, 6, 7,
+  0, 1, 2, 3, 4, 5, 6, 7, 8,
   MENU_ACTION_BRIGHTNESS, MENU_ACTION_CONFIG_MODE, MENU_ACTION_RESET_DEFAULTS};
 const char *const MENU_LABELS_ONLINE[MENU_ITEM_COUNT_ONLINE] = {
   "Face",
@@ -126,6 +126,7 @@ const char *const MENU_LABELS_ONLINE[MENU_ITEM_COUNT_ONLINE] = {
   "Lyrics",
   "Health Stats",
   "Run Game",
+  "Media Screen",
   "Brightness",
   "Config Mode",
   "Reset Defaults"};
@@ -156,6 +157,11 @@ int pc_cpu = 0;
 int pc_ram = 0;
 int pc_up = 0;
 int pc_down = 0;
+
+// --- MEDIA SCREEN STREAM ---
+uint8_t mediaFrameBuffer[1024];
+bool mediaFrameReady = false;
+String mediaStatus = "NO_MEDIA";
 
 // --- KORANGU RUN VARIABLES ---
 float kY = 48;
@@ -1068,9 +1074,9 @@ void transitionToPage(int requestedPage, bool forceReport = false)
 {
   if (requestedPage < 0)
     requestedPage = 0;
-  if (requestedPage > 7)
-    requestedPage = 7;
-  if (!wsConnected && (requestedPage == 5 || requestedPage == 6))
+  if (requestedPage > 8)
+    requestedPage = 8;
+  if (!wsConnected && (requestedPage == 5 || requestedPage == 6 || requestedPage == 8))
     requestedPage = 0;
 
   bool changed = (currentPage != requestedPage);
@@ -1913,6 +1919,48 @@ String lyricStatusToText(const String &status)
   return "[music]";
 }
 
+int hexToNibble(char c)
+{
+  if (c >= '0' && c <= '9')
+    return c - '0';
+  if (c >= 'a' && c <= 'f')
+    return 10 + (c - 'a');
+  if (c >= 'A' && c <= 'F')
+    return 10 + (c - 'A');
+  return -1;
+}
+
+bool decodeMediaFrameHex(const String &message, int startIndex)
+{
+  const int expectedChars = 1024 * 2;
+  if ((message.length() - startIndex) != expectedChars)
+    return false;
+
+  for (int i = 0; i < 1024; i++)
+  {
+    int high = hexToNibble(message.charAt(startIndex + (i * 2)));
+    int low = hexToNibble(message.charAt(startIndex + (i * 2 + 1)));
+    if (high < 0 || low < 0)
+      return false;
+    mediaFrameBuffer[i] = (uint8_t)((high << 4) | low);
+  }
+
+  return true;
+}
+
+String mediaStatusToText(const String &status)
+{
+  if (status == "READY")
+    return "Waiting frames...";
+  if (status == "PROCESSING")
+    return "Processing media";
+  if (status == "ERROR")
+    return "Media error";
+  if (status == "NO_MEDIA")
+    return "No media selected";
+  return status;
+}
+
 void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
 {
   switch (type)
@@ -1922,6 +1970,8 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
     pc_ip = "";
     wsConnected = false;
     lastReportedPage = -1;
+    mediaFrameReady = false;
+    mediaStatus = "NO_MEDIA";
     wsServerPort = WS_DEFAULT_PORT;
     wsConnectBackoffMs = nextWsBackoff(wsConnectBackoffMs);
     webSocket.setReconnectInterval(wsConnectBackoffMs);
@@ -1983,6 +2033,22 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
       {
         lyricStartTime = millis();
         lyricTransitionType = random(0, 4);
+      }
+    }
+    else if (text.startsWith("MEDIA_STATUS:"))
+    {
+      String statusCode = text.substring(13);
+      statusCode.trim();
+      mediaStatus = statusCode;
+      if (statusCode != "READY")
+        mediaFrameReady = false;
+    }
+    else if (text.startsWith("MEDIA_FRAME:"))
+    {
+      if (decodeMediaFrameHex(text, 12))
+      {
+        mediaFrameReady = true;
+        mediaStatus = "READY";
       }
     }
     else if (text.startsWith("STATS:"))
@@ -2777,6 +2843,49 @@ void drawKoranguRun()
   display.print(kScore);
 }
 
+void drawMediaPage()
+{
+  display.setFont(NULL);
+  display.setTextSize(1);
+  display.setTextColor(SH110X_WHITE);
+
+  if (mediaFrameReady)
+  {
+    display.drawBitmap(0, 0, mediaFrameBuffer, SCREEN_WIDTH, SCREEN_HEIGHT, SH110X_WHITE);
+    return;
+  }
+
+  display.drawRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, SH110X_WHITE);
+  display.setCursor(28, 6);
+  display.print("MEDIA SCREEN");
+  display.drawFastHLine(8, 15, 112, SH110X_WHITE);
+
+  String line = mediaStatusToText(mediaStatus);
+  display.setCursor(10, 28);
+  display.print(line);
+
+  if (mediaStatus == "NO_MEDIA")
+  {
+    display.setCursor(8, 40);
+    display.print("Pick clip from PC app");
+  }
+  else if (mediaStatus == "PROCESSING")
+  {
+    display.setCursor(14, 40);
+    display.print("Please wait...");
+  }
+  else if (mediaStatus == "READY")
+  {
+    display.setCursor(6, 40);
+    display.print("Waiting first frame...");
+  }
+  else
+  {
+    display.setCursor(8, 40);
+    display.print("Try selecting again");
+  }
+}
+
 void drawMenuOverlay()
 {
   normalizeMenuSelection();
@@ -3333,14 +3442,14 @@ void loop()
   establishTelepathicLink();
   handleTouch();
 
-  if (!wsConnected && (currentPage == 5 || currentPage == 6))
+  if (!wsConnected && (currentPage == 5 || currentPage == 6 || currentPage == 8))
   {
     transitionToPage(0, true);
   }
 
   // Returns to face after 5 seconds on utility pages.
-  // Lyrics (5), Cyberdeck (6), and Game (7) stay sticky until user changes screen.
-  if (!inMenuOverlay && currentPage != 0 && currentPage != 5 && currentPage != 6 && currentPage != 7 && (now - lastPageSwitch > 5000))
+  // Lyrics (5), Cyberdeck (6), Game (7), and Media (8) stay sticky until user changes screen.
+  if (!inMenuOverlay && currentPage != 0 && currentPage != 5 && currentPage != 6 && currentPage != 7 && currentPage != 8 && (now - lastPageSwitch > 5000))
   {
     transitionToPage(0, true);
   }
@@ -3375,6 +3484,9 @@ void loop()
     break;
   case 7:
     drawKoranguRun();
+    break;
+  case 8:
+    drawMediaPage();
     break;
   }
 
