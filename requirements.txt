@@ -16,7 +16,7 @@ psutil==7.2.2
 pydantic==2.13.0
 pydantic_core==2.46.0
 PyQt6==6.11.0
-PyQt6-Qt6==6.11.0
+PyQt6-Qt6==6.11.1
 PyQt6_sip==13.11.1
 python-dotenv==1.2.2
 PyYAML==6.0.3
