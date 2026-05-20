@@ -20,7 +20,7 @@ PyQt6-Qt6==6.11.0
 PyQt6_sip==13.11.1
 python-dotenv==1.2.2
 PyYAML==6.0.3
-requests==2.33.1
+requests==2.34.2
 starlette==1.0.0
 typing-inspection==0.4.2
 typing_extensions==4.15.0
